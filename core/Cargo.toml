@@ -62,9 +62,9 @@ docs = []
 trust-dns = ["reqwest/trust-dns"]
 
 # Enable rustls for TLS support
-rustls = ["reqwest/rustls-tls-native-roots"]
+rustls = ["reqwest/rustls-tls-native-roots", "redis?/tokio-rustls-comp"]
 # Enable native-tls for TLS support
-native-tls = ["reqwest/native-tls"]
+native-tls = ["reqwest/native-tls", "redis?/tokio-native-tls-comp"]
 # Enable vendored native-tls for TLS support
 native-tls-vendored = ["reqwest/native-tls-vendored"]
 
