@@ -36,6 +36,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
+
+
+
+
 jobs:
   redis:
     runs-on: ubuntu-latest
@@ -57,6 +61,85 @@ jobs:
         env:
           OPENDAL_REDIS_TEST: on
           OPENDAL_REDIS_ENDPOINT: tcp://127.0.0.1:6379
+          OPENDAL_REDIS_ROOT: /
+          OPENDAL_REDIS_DB: 0
+
+  redis-tls:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure Redis with TLS
+        run: |
+          # Create CA
+
+          openssl req \
+            -x509 -new -nodes \
+            -keyout ca.key \
+            -sha256 \
+            -days 365 \
+            -out ca.crt \
+            -subj '/CN=Test Root CA/C=US/ST=Test/L=Test/O=Opendal'
+
+          # Create redis certificate
+
+          openssl req \
+            -new -nodes \
+            -out redis.csr \
+            -keyout redis.key \
+            -subj '/CN=Redis certificate/C=US/ST=Test/L=Test/O=Opendal'
+
+          cat > redis.v3.ext << EOF
+          authorityKeyIdentifier=keyid,issuer
+          basicConstraints=CA:FALSE
+          keyUsage = digitalSignature, nonRepudiation, keyEncipherment, dataEncipherment
+          subjectAltName = @alt_names
+          [alt_names]
+          DNS.1 = localhost
+          IP.1 = 127.0.0.1
+          EOF
+
+          openssl x509 \
+            -req \
+            -in redis.csr /
+            -CA ca.crt /
+            -CAkey ca.key /
+            -CAcreateserial /
+            -out redis.crt /
+            -days 300 /
+            -sha256 /
+            -extfile redis.v3.ext
+
+          chmod 777 redis.crt redis.key
+
+          # Launch redis
+
+          docker run -d
+            --rm
+            --name redis
+            --network host
+            -v .:/etc/redis/ssl
+            redis
+              --tls-port 6380
+              --tls-cert-file /etc/redis/ssl/redis.crt
+              --tls-key-file /etc/redis/ssl/redis.key
+              --tls-auth-clients no
+
+          # Install the CA in the system
+          
+          cp ca.crt /usr/local/share/ca-certificates
+          update-ca-certificates
+
+      - uses: actions/checkout@v3
+      - name: Setup Rust toolchain
+        uses: ./.github/actions/setup
+        with:
+          need-nextest: true
+      - name: Test
+        shell: bash
+        working-directory: core
+        run: cargo nextest run redis --features services-redis
+        env:
+          OPENDAL_REDIS_TEST: on
+          OPENDAL_REDIS_ENDPOINT: rediss://localhost:6380
           OPENDAL_REDIS_ROOT: /
           OPENDAL_REDIS_DB: 0
 
